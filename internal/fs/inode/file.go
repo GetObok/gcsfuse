@@ -309,11 +309,11 @@ func (f *FileInode) Unlock() {
 }
 
 func (f *FileInode) RLock() {
-	f.mu.RLock()
+	f.mu.Lock()
 }
 
 func (f *FileInode) RUnlock() {
-	f.mu.RUnlock()
+	f.mu.Unlock()
 }
 
 func (f *FileInode) ID() fuseops.InodeID {
