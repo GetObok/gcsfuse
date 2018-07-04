@@ -54,10 +54,6 @@
   name = "github.com/jacobsa/ratelimit"
 
 [[constraint]]
-  name = "github.com/jacobsa/syncutil"
-  source = "https://github.com/istreamdata/syncutil.git"
-
-[[constraint]]
   branch = "master"
   name = "github.com/jacobsa/timeutil"
 
