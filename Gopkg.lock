@@ -36,7 +36,7 @@
   name = "github.com/jacobsa/gcloud"
   packages = ["gcs","gcs/gcscaching","gcs/gcsfake","gcs/gcsutil","httputil"]
   revision = "36746f318ac913dc60140851026d5b0476abc002"
-  source = "https://github.com/istreamdata/gcloud.git"
+  source = "https://github.com/datomia/gcloud.git"
 
 [[projects]]
   branch = "master"
@@ -67,13 +67,6 @@
   name = "github.com/jacobsa/reqtrace"
   packages = ["."]
   revision = "245c9e0234cb2ad542483a336324e982f1a22934"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/jacobsa/syncutil"
-  packages = ["."]
-  revision = "08c1767d13114596059e49555801373277616944"
-  source = "https://github.com/istreamdata/syncutil.git"
 
 [[projects]]
   branch = "master"
