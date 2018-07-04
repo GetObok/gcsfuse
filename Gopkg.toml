@@ -35,7 +35,7 @@
 
 [[constraint]]
   name = "github.com/jacobsa/gcloud"
-  source = "https://github.com/istreamdata/gcloud.git"
+  source = "https://github.com/datomia/gcloud.git"
 
 [[constraint]]
   branch = "master"
