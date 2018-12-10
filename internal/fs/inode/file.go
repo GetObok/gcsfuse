@@ -17,6 +17,8 @@ package inode
 import (
 	"fmt"
 	"io"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/googlecloudplatform/gcsfuse/internal/gcsx"
@@ -26,8 +28,6 @@ import (
 	"github.com/jacobsa/syncutil"
 	"github.com/jacobsa/timeutil"
 	"golang.org/x/net/context"
-	"log"
-	"sync"
 )
 
 // A GCS object metadata key for file mtimes. mtimes are UTC, and are stored in
@@ -75,7 +75,7 @@ type FileInode struct {
 	// authoritative.
 	content gcsx.TempFile
 
-	rmu sync.Mutex
+	rmu          sync.Mutex
 	sourceReader io.ReadSeeker
 
 	// Has Destroy been called?
@@ -109,26 +109,21 @@ func NewFileInode(
 	bucket gcs.Bucket,
 	syncer gcsx.Syncer,
 	tempDir string,
-	mtimeClock timeutil.Clock, cleanupFunc func(Inode), p *gcsx.TempFileSate, cacheRemovalDelay time.Duration,) (f *FileInode) {
+	mtimeClock timeutil.Clock, cleanupFunc func(Inode), p *gcsx.TempFileSate, cacheRemovalDelay time.Duration) (f *FileInode) {
 	// Set up the basic struct.
 	f = &FileInode{
-		bucket:        bucket,
-		syncer:        syncer,
-		mtimeClock:    mtimeClock,
-		id:            id,
-		name:          o.Name,
-		attrs:         attrs,
-		tempDir:       tempDir,
+		bucket:            bucket,
+		syncer:            syncer,
+		mtimeClock:        mtimeClock,
+		id:                id,
+		name:              o.Name,
+		attrs:             attrs,
+		tempDir:           tempDir,
 		cacheRemovalDelay: cacheRemovalDelay,
-		src:           *o,
-		cleanupFunc:   cleanupFunc,
-		tempFileState: p,
+		src:               *o,
+		cleanupFunc:       cleanupFunc,
+		tempFileState:     p,
 	}
-	f.sc = util.NewSchedule(f.cacheRemovalDelay, 0, nil, func(i interface{}) {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		f.Cleanup()
-	})
 
 	f.lc.Init(id)
 
@@ -144,6 +139,12 @@ func NewFileInode(
 // LOCKS_REQUIRED(f.mu)
 func (f *FileInode) Cleanup() {
 	log.Println("fuse: removing cache for inode", f.id, f.name)
+	f.cleanupScheduled = false
+
+	if f.syncRequired {
+		return
+	}
+
 	if f.content != nil {
 		name := f.GetTmpFileName()
 		if er := f.tempFileState.DeleteFileStatus(name); er != nil {
@@ -152,12 +153,17 @@ func (f *FileInode) Cleanup() {
 		f.content.Destroy()
 		f.content = nil
 	}
-	f.cleanupScheduled = false
 
-	if f.lc.count == 0 && f.syncRequired == false {
+	if f.lc.count == 0 {
 		log.Println("fuse: cleanup inode", f.id, f.name)
 		f.Destroy()
 		f.cleanupFunc(f)
+
+		if f.sc != nil {
+			sc := f.sc
+			go sc.Close()
+			f.sc = nil
+		}
 	}
 }
 
@@ -261,13 +267,22 @@ func (f *FileInode) CanDestroy() bool {
 
 // LOCKS_REQUIRED(f.mu)
 func (f *FileInode) scheduleCleanUp() {
+	if f.sc == nil {
+		f.sc = util.NewSchedule(f.cacheRemovalDelay, 0, nil, func(i interface{}) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.Cleanup()
+		})
+	}
 	f.sc.Schedule(f.name)
 	f.cleanupScheduled = true
 }
 
 // LOCKS_REQUIRED(f.mu)
 func (f *FileInode) cancelCleanupSchedule() {
-	f.sc.Cancel(f.name)
+	if f.sc != nil {
+		f.sc.Cancel(f.name)
+	}
 	f.cleanupScheduled = false
 }
 
@@ -391,6 +406,7 @@ func (f *FileInode) Destroy() (err error) {
 	if f.content != nil {
 		f.content.Destroy()
 	}
+	f.content = nil
 
 	return
 }
