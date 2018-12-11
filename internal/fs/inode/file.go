@@ -152,18 +152,18 @@ func (f *FileInode) Cleanup() {
 		}
 		f.content.Destroy()
 		f.content = nil
-	}
-
-	if f.lc.count == 0 {
-		log.Println("fuse: cleanup inode", f.id, f.name)
-		f.Destroy()
-		f.cleanupFunc(f)
 
 		if f.sc != nil {
 			sc := f.sc
 			go sc.Close()
 			f.sc = nil
 		}
+	}
+
+	if f.lc.count == 0 {
+		log.Println("fuse: cleanup inode", f.id, f.name)
+		f.Destroy()
+		f.cleanupFunc(f)
 	}
 }
 
