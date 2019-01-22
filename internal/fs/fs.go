@@ -23,6 +23,9 @@ import (
 	"reflect"
 	"time"
 
+	"path"
+	"strings"
+
 	"github.com/googlecloudplatform/gcsfuse/internal/fs/handle"
 	"github.com/googlecloudplatform/gcsfuse/internal/fs/inode"
 	"github.com/googlecloudplatform/gcsfuse/internal/gcsx"
@@ -34,8 +37,6 @@ import (
 	"github.com/jacobsa/syncutil"
 	"github.com/jacobsa/timeutil"
 	"golang.org/x/net/context"
-	"path"
-	"strings"
 )
 
 type ServerConfig struct {
@@ -87,6 +88,9 @@ type ServerConfig struct {
 	// consistency: if the child is removed and recreated with a different type
 	// before the expiration, we may fail to find it.
 	DirTypeCacheTTL time.Duration
+
+	// Type Cache Capacity
+	DirTypeCacheCapacity int
 
 	// The UID and GID that owns all inodes in the file system.
 	Uid uint32
@@ -166,6 +170,7 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		implicitDirs:           cfg.ImplicitDirectories,
 		inodeAttributeCacheTTL: cfg.InodeAttributeCacheTTL,
 		dirTypeCacheTTL:        cfg.DirTypeCacheTTL,
+		dirTypeCacheCapacity:   cfg.DirTypeCacheCapacity,
 		uid:                    cfg.Uid,
 		gid:                    cfg.Gid,
 		fileMode:               cfg.FilePerms,
@@ -234,6 +239,7 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		},
 		fs.implicitDirs,
 		fs.dirTypeCacheTTL,
+		fs.dirTypeCacheCapacity,
 		fs.bucket,
 		fs.mtimeClock,
 		fs.cacheClock)
@@ -304,6 +310,7 @@ type fileSystem struct {
 	implicitDirs           bool
 	inodeAttributeCacheTTL time.Duration
 	dirTypeCacheTTL        time.Duration
+	dirTypeCacheCapacity   int
 
 	// The user and group owning everything in the file system.
 	uid uint32
@@ -595,6 +602,7 @@ func (fs *fileSystem) mintInode(name string, o *gcs.Object) (in inode.Inode) {
 			},
 			fs.implicitDirs,
 			fs.dirTypeCacheTTL,
+			fs.dirTypeCacheCapacity,
 			fs.bucket,
 			fs.mtimeClock,
 			fs.cacheClock)
@@ -616,6 +624,7 @@ func (fs *fileSystem) mintInode(name string, o *gcs.Object) (in inode.Inode) {
 			},
 			fs.implicitDirs,
 			fs.dirTypeCacheTTL,
+			fs.dirTypeCacheCapacity,
 			fs.bucket,
 			fs.mtimeClock,
 			fs.cacheClock)
