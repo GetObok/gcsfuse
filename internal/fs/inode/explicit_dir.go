@@ -37,6 +37,7 @@ func NewExplicitDirInode(
 	attrs fuseops.InodeAttributes,
 	implicitDirs bool,
 	typeCacheTTL time.Duration,
+	typeCacheCapacity int,
 	bucket gcs.Bucket,
 	mtimeClock timeutil.Clock,
 	cacheClock timeutil.Clock) (d ExplicitDirInode) {
@@ -46,6 +47,7 @@ func NewExplicitDirInode(
 		attrs,
 		implicitDirs,
 		typeCacheTTL,
+		typeCacheCapacity,
 		bucket,
 		mtimeClock,
 		cacheClock)

@@ -220,6 +220,7 @@ func NewDirInode(
 	attrs fuseops.InodeAttributes,
 	implicitDirs bool,
 	typeCacheTTL time.Duration,
+	typeCacheCapacity int,
 	bucket gcs.Bucket,
 	mtimeClock timeutil.Clock,
 	cacheClock timeutil.Clock) (d DirInode) {
@@ -228,7 +229,6 @@ func NewDirInode(
 	}
 
 	// Set up the struct.
-	const typeCacheCapacity = 1 << 16
 	typed := &dirInode{
 		bucket:       bucket,
 		mtimeClock:   mtimeClock,
@@ -791,7 +791,7 @@ func (d *dirInode) CloneToChildFile(
 			SrcName:                       src.Name,
 			SrcGeneration:                 src.Generation,
 			SrcMetaGenerationPrecondition: &src.MetaGeneration,
-			DstName: path.Join(d.Name(), name),
+			DstName:                       path.Join(d.Name(), name),
 		})
 
 	if err != nil {

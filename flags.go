@@ -55,10 +55,10 @@ func newApp() (app *cli.App) {
 	*fileModeValue = 0644
 
 	app = &cli.App{
-		Name:     "gcsfuse",
-		Version:  getVersion(),
-		Usage:    "Mount a GCS bucket locally",
-		Writer:   os.Stderr,
+		Name:    "gcsfuse",
+		Version: getVersion(),
+		Usage:   "Mount a GCS bucket locally",
+		Writer:  os.Stderr,
 		Flags: []cli.Flag{
 
 			cli.BoolFlag{
@@ -206,9 +206,11 @@ type flagStorage struct {
 	OpRateLimitHz                      float64
 
 	// Tuning
-	StatCacheTTL time.Duration
-	TypeCacheTTL time.Duration
-	TempDir      string
+	StatCacheCapacity int
+	TypeCacheCapacity int
+	StatCacheTTL      time.Duration
+	TypeCacheTTL      time.Duration
+	TempDir           string
 
 	// Debugging
 	DebugFuse       bool
@@ -233,7 +235,7 @@ func populateFlags(c *cli.Context) (flags *flagStorage) {
 		OnlyDir:      c.String("only-dir"),
 
 		// GCS,
-		KeyFile: c.String("key-file"),
+		KeyFile:                            c.String("key-file"),
 		EgressBandwidthLimitBytesPerSecond: c.Float64("limit-bytes-per-sec"),
 		OpRateLimitHz:                      c.Float64("limit-ops-per-sec"),
 

@@ -44,6 +44,7 @@ const dirInodeID = 17
 const dirInodeName = "foo/bar/"
 const dirMode os.FileMode = 0712 | os.ModeDir
 const typeCacheTTL = time.Second
+const typeCacheCapacity = 1 << 16
 
 type DirTest struct {
 	ctx    context.Context
@@ -96,6 +97,7 @@ func (t *DirTest) resetInode(implicitDirs bool) {
 		},
 		implicitDirs,
 		typeCacheTTL,
+		typeCacheCapacity,
 		t.bucket,
 		&t.clock,
 		&t.clock)

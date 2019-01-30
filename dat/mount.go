@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"time"
+
 	"github.com/googlecloudplatform/gcsfuse/internal/fs"
 	"github.com/googlecloudplatform/gcsfuse/internal/mount"
 	"github.com/googlecloudplatform/gcsfuse/internal/perms"
@@ -11,7 +13,6 @@ import (
 	"github.com/jacobsa/fuse/fsutil"
 	"github.com/jacobsa/gcloud/gcs"
 	"github.com/jacobsa/timeutil"
-	"time"
 )
 
 // Mount the file system based on the supplied arguments, returning a
@@ -72,6 +73,7 @@ be interacting with the file system.
 		ImplicitDirectories:    flags.ImplicitDirs,
 		InodeAttributeCacheTTL: flags.StatCacheTTL,
 		DirTypeCacheTTL:        flags.TypeCacheTTL,
+		DirTypeCacheCapacity:   flags.TypeCacheCapacity,
 		Uid:                    uid,
 		Gid:                    gid,
 		FilePerms:              os.FileMode(flags.FileMode),
@@ -107,6 +109,8 @@ type FlagStorage struct {
 	OpRateLimitHz                      float64
 
 	// Tuning
+	StatCacheCapacity int
+	TypeCacheCapacity int
 	StatCacheTTL      time.Duration
 	TypeCacheTTL      time.Duration
 	TempDir           string
