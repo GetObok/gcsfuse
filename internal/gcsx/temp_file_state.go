@@ -140,11 +140,15 @@ func (p *TempFileState) UploadUnsynced(ctx context.Context) error {
 			} else if err == nil {
 				if !f.Synced {
 					log.Println("local cache file sync.", t, f.Name)
-					if err := p.uploadTmpFile(ctx, tfile, f); err != nil {
+					err := p.uploadTmpFile(ctx, tfile, f)
+					if err == nil {
+						log.Println("local cache file sync done.", t, f.Name)
+					} else {
 						log.Println("local cache file sync failed.", t, f.Name, err)
-						continue
+						if _, ok := err.(*gcs.PreconditionError); !ok {
+							continue
+						}
 					}
-					log.Println("local cache file sync done.", t, f.Name)
 				} else {
 					log.Println("local cache file already synced.", t, f.Name)
 				}
