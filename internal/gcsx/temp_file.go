@@ -20,11 +20,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/jacobsa/timeutil"
-	"sync"
+	"io/ioutil"
 	"log"
 	"path"
-	"io/ioutil"
+	"sync"
+
+	"github.com/jacobsa/timeutil"
 )
 
 // A temporary file that keeps track of the lowest offset at which it has been
@@ -36,7 +37,6 @@ type TempFile interface {
 	CheckInvariants()
 
 	// Semantics matching os.File.
-	io.ReadSeeker
 	io.ReaderAt
 	io.WriterAt
 	Truncate(n int64) (err error)
@@ -78,7 +78,7 @@ type StatResult struct {
 	Mtime *time.Time
 }
 
-type progressWriter struct{
+type progressWriter struct {
 	written int64
 }
 
@@ -103,16 +103,16 @@ func NewTempFile(
 	}
 	pw := &progressWriter{}
 	tempFile := &tempFile{
-		clock:          clock,
-		f:              f,
-		fro: fro,
-		pw: pw,
+		clock: clock,
+		f:     f,
+		fro:   fro,
+		pw:    pw,
 	}
 	tempFile.mu.Lock()
 	tf = tempFile
 
 	fc := func() {
-		defer func(){
+		defer func() {
 			if close != nil {
 				close()
 			}
@@ -139,8 +139,7 @@ func NewTempFile(
 	return
 }
 
-
-func AnonymousFile(dir string) (frw *os.File, fro *os.File, err error){
+func AnonymousFile(dir string) (frw *os.File, fro *os.File, err error) {
 	// Choose a prefix based on the binary name.
 	prefix := path.Base(os.Args[0])
 
@@ -198,10 +197,10 @@ type tempFile struct {
 
 	mu sync.Mutex
 
-	dpmu sync.Mutex
+	dpmu               sync.Mutex
 	downloadInProgress bool
 
-	pw *progressWriter
+	pw  *progressWriter
 	err error
 }
 
@@ -215,13 +214,13 @@ func (tf *tempFile) CheckInvariants() {
 	}
 
 	// Restore the seek position after using Stat below.
-	pos, err := tf.Seek(0, 1)
+	pos, err := tf.f.Seek(0, 1)
 	if err != nil {
 		panic(fmt.Sprintf("Seek: %v", err))
 	}
 
 	defer func() {
-		_, err := tf.Seek(pos, 0)
+		_, err := tf.f.Seek(pos, 0)
 		if err != nil {
 			panic(fmt.Sprintf("Seek: %v", err))
 		}
@@ -256,14 +255,6 @@ func (tf *tempFile) Destroy() {
 	tf.fro = nil
 }
 
-func (tf *tempFile) Read(p []byte) (int, error) {
-	return tf.fro.Read(p)
-}
-
-func (tf *tempFile) Seek(offset int64, whence int) (int64, error) {
-	return tf.f.Seek(offset, whence)
-}
-
 func (tf *tempFile) ReadAt(p []byte, offset int64) (int, error) {
 	for {
 		tf.dpmu.Lock()
@@ -275,7 +266,7 @@ func (tf *tempFile) ReadAt(p []byte, offset int64) (int, error) {
 			break
 		}
 		tf.dpmu.Unlock()
-		bl := offset+int64(len(p))
+		bl := offset + int64(len(p))
 		wr := tf.pw.written
 		if bl <= wr {
 			break

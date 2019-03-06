@@ -20,21 +20,21 @@ type tempFileStat struct {
 	Generation int64
 }
 
-type TempFileSate struct {
+type TempFileState struct {
 	mu        sync.Mutex
 	stateFile string
 
 	bucket gcs.Bucket
 }
 
-func NewTempFileSate(cacheDir string, b gcs.Bucket) *TempFileSate {
-	return &TempFileSate{
+func NewTempFileState(cacheDir string, b gcs.Bucket) *TempFileState {
+	return &TempFileState{
 		stateFile: path.Join(cacheDir, "status.json"),
 		bucket:    b,
 	}
 }
 
-func (p *TempFileSate) getStatusFile() (*os.File, map[string]tempFileStat, error) {
+func (p *TempFileState) getStatusFile() (*os.File, map[string]tempFileStat, error) {
 	file, err := os.OpenFile(p.stateFile, os.O_CREATE|os.O_RDWR, 0700)
 	if err != nil {
 		return nil, nil, err
@@ -54,7 +54,7 @@ func (p *TempFileSate) getStatusFile() (*os.File, map[string]tempFileStat, error
 	return file, tmpFileStats, nil
 }
 
-func (p *TempFileSate) writeStatusFile(file *os.File, st map[string]tempFileStat) error {
+func (p *TempFileState) writeStatusFile(file *os.File, st map[string]tempFileStat) error {
 	bytes, err := json.Marshal(st)
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func (p *TempFileSate) writeStatusFile(file *os.File, st map[string]tempFileStat
 	return nil
 }
 
-func (p *TempFileSate) MarkForUpload(tmpFile, dstPath string, generation int64) error {
+func (p *TempFileState) MarkForUpload(tmpFile, dstPath string, generation int64) error {
 	return p.update(func(m map[string]tempFileStat) {
 		m[tmpFile] = tempFileStat{
 			Name:       dstPath,
@@ -79,7 +79,7 @@ func (p *TempFileSate) MarkForUpload(tmpFile, dstPath string, generation int64) 
 	})
 }
 
-func (p *TempFileSate) MarkUploaded(tmpFile string) error {
+func (p *TempFileState) MarkUploaded(tmpFile string) error {
 	return p.update(func(m map[string]tempFileStat) {
 		s := m[tmpFile]
 		s.Synced = true
@@ -87,13 +87,13 @@ func (p *TempFileSate) MarkUploaded(tmpFile string) error {
 	})
 }
 
-func (p *TempFileSate) DeleteFileStatus(tmpFile string) error {
+func (p *TempFileState) DeleteFileStatus(tmpFile string) error {
 	return p.update(func(m map[string]tempFileStat) {
 		delete(m, tmpFile)
 	})
 }
 
-func (p *TempFileSate) UpdatePaths(oldPath, newPath string) error {
+func (p *TempFileState) UpdatePaths(oldPath, newPath string) error {
 	return p.update(func(m map[string]tempFileStat) {
 		for t, s := range m {
 			if strings.HasPrefix(s.Name, oldPath) {
@@ -109,7 +109,7 @@ func (p *TempFileSate) UpdatePaths(oldPath, newPath string) error {
 	})
 }
 
-func (p *TempFileSate) update(update func(m map[string]tempFileStat)) error {
+func (p *TempFileState) update(update func(m map[string]tempFileStat)) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -123,7 +123,7 @@ func (p *TempFileSate) update(update func(m map[string]tempFileStat)) error {
 	return p.writeStatusFile(file, st)
 }
 
-func (p *TempFileSate) UploadUnsynced(ctx context.Context) error {
+func (p *TempFileState) UploadUnsynced(ctx context.Context) error {
 	p.mu.Lock()
 	file, st, err := p.getStatusFile()
 	if err != nil {
@@ -167,7 +167,7 @@ func (p *TempFileSate) UploadUnsynced(ctx context.Context) error {
 	return nil
 }
 
-func (p *TempFileSate) CreateIfEmpty() error {
+func (p *TempFileState) CreateIfEmpty() error {
 	csf, err := os.OpenFile(p.stateFile, os.O_CREATE|os.O_RDWR, 0700)
 	if err != nil {
 		return err
@@ -186,14 +186,14 @@ func (p *TempFileSate) CreateIfEmpty() error {
 	return nil
 }
 
-func (p *TempFileSate) uploadTmpFile(ctx context.Context, tmpFile string, f tempFileStat) error {
+func (p *TempFileState) uploadTmpFile(ctx context.Context, tmpFile string, f tempFileStat) error {
 	tfile, err := os.Open(tmpFile)
 	defer tfile.Close()
 	if err != nil {
 		return err
 	}
 	req := &gcs.CreateObjectRequest{
-		Name: f.Name,
+		Name:                   f.Name,
 		GenerationPrecondition: &f.Generation,
 		Contents:               tfile,
 		Metadata: map[string]string{

@@ -148,7 +148,7 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		return nil, err
 	}
 
-	tfs := gcsx.NewTempFileSate(cacheDir, bucket)
+	tfs := gcsx.NewTempFileState(cacheDir, bucket)
 	if err := tfs.CreateIfEmpty(); err != nil {
 		return nil, err
 	}
@@ -410,7 +410,7 @@ type fileSystem struct {
 	nextHandleID fuseops.HandleID
 
 	syncSc        *util.Schedule
-	tempFileState *gcsx.TempFileSate
+	tempFileState *gcsx.TempFileState
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -953,7 +953,7 @@ func (fs *fileSystem) unlockAndDecrementLookupCount(
 	if fin, ok := in.(*inode.FileInode); ok {
 		fin.RUnlock()
 	} else {
-		panic(fmt.Errorf("file inode expected", in.ID(), in.Name()))
+		panic(fmt.Errorf("file inode expected %q, %q", in.ID(), in.Name()))
 	}
 }
 
@@ -991,7 +991,7 @@ func (fs *fileSystem) unlockAndMaybeDisposeOfInode(
 			fin.RUnlock()
 			return
 		} else {
-			panic(fmt.Errorf("file inode expected", in.ID(), in.Name()))
+			panic(fmt.Errorf("file inode expected %q %q", in.ID(), in.Name()))
 		}
 	}
 
