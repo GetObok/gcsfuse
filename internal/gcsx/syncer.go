@@ -42,7 +42,7 @@ type Syncer interface {
 	SyncObject(
 		ctx context.Context,
 		srcObject *gcs.Object,
-		content TempFile) (o *gcs.Object, err error)
+		content TempFileRO) (o *gcs.Object, err error)
 }
 
 // Create a syncer that syncs into the supplied bucket.
@@ -87,7 +87,7 @@ func (oc *fullObjectCreator) Create(
 	mtime time.Time,
 	r io.Reader) (o *gcs.Object, err error) {
 	req := &gcs.CreateObjectRequest{
-		Name: srcObject.Name,
+		Name:                       srcObject.Name,
 		GenerationPrecondition:     &srcObject.Generation,
 		MetaGenerationPrecondition: &srcObject.MetaGeneration,
 		Contents:                   r,
@@ -164,7 +164,7 @@ type syncer struct {
 func (os *syncer) SyncObject(
 	ctx context.Context,
 	srcObject *gcs.Object,
-	content TempFile) (o *gcs.Object, err error) {
+	content TempFileRO) (o *gcs.Object, err error) {
 	// Stat the content.
 	sr, err := content.Stat()
 	if err != nil {

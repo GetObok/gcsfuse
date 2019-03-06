@@ -89,7 +89,7 @@ type FileInode struct {
 	cleanupFunc      func(in Inode)
 	syncing          bool
 	syncReceived     bool
-	tempFileState    *gcsx.TempFileSate
+	tempFileState    *gcsx.TempFileState
 }
 
 var _ Inode = &FileInode{}
@@ -109,7 +109,7 @@ func NewFileInode(
 	bucket gcs.Bucket,
 	syncer gcsx.Syncer,
 	tempDir string,
-	mtimeClock timeutil.Clock, cleanupFunc func(Inode), p *gcsx.TempFileSate, cacheRemovalDelay time.Duration) (f *FileInode) {
+	mtimeClock timeutil.Clock, cleanupFunc func(Inode), p *gcsx.TempFileState, cacheRemovalDelay time.Duration) (f *FileInode) {
 	// Set up the basic struct.
 	f = &FileInode{
 		bucket:            bucket,

@@ -20,44 +20,47 @@ import (
 	"os"
 	"time"
 
-	"github.com/jacobsa/timeutil"
-	"sync"
+	"io/ioutil"
 	"log"
 	"path"
-	"io/ioutil"
+	"sync"
+
+	"github.com/jacobsa/timeutil"
 )
+
+type TempFileRO interface {
+	GetFileRO() *os.File
+
+	// Return information about the current state of the content. May invalidate
+	// the seek position.
+	Stat() (sr StatResult, err error)
+
+	// Throw away the resources used by the temporary file. The object must not
+	// be used again.
+	Destroy()
+}
 
 // A temporary file that keeps track of the lowest offset at which it has been
 // modified.
 //
 // Not safe for concurrent access.
 type TempFile interface {
+	TempFileRO
+
 	// Panic if any internal invariants are violated.
 	CheckInvariants()
 
-	// Semantics matching os.File.
-	io.ReadSeeker
 	io.ReaderAt
 	io.WriterAt
 	Truncate(n int64) (err error)
-
-	// Return information about the current state of the content. May invalidate
-	// the seek position.
-	Stat() (sr StatResult, err error)
 
 	// Explicitly set the mtime that will return in stat results. This will stick
 	// until another method that modifies the file is called.
 	SetMtime(mtime time.Time)
 
-	// Throw away the resources used by the temporary file. The object must not
-	// be used again.
-	Destroy()
-
 	SetDirtyThreshold(t int64)
 
 	SyncLocal() error
-
-	GetFileRO() *os.File
 }
 
 type StatResult struct {
@@ -78,7 +81,7 @@ type StatResult struct {
 	Mtime *time.Time
 }
 
-type progressWriter struct{
+type progressWriter struct {
 	written int64
 }
 
@@ -103,16 +106,16 @@ func NewTempFile(
 	}
 	pw := &progressWriter{}
 	tempFile := &tempFile{
-		clock:          clock,
-		f:              f,
-		fro: fro,
-		pw: pw,
+		clock: clock,
+		f:     f,
+		fro:   fro,
+		pw:    pw,
 	}
 	tempFile.mu.Lock()
 	tf = tempFile
 
 	fc := func() {
-		defer func(){
+		defer func() {
 			if close != nil {
 				close()
 			}
@@ -139,8 +142,7 @@ func NewTempFile(
 	return
 }
 
-
-func AnonymousFile(dir string) (frw *os.File, fro *os.File, err error){
+func AnonymousFile(dir string) (frw *os.File, fro *os.File, err error) {
 	// Choose a prefix based on the binary name.
 	prefix := path.Base(os.Args[0])
 
@@ -198,10 +200,10 @@ type tempFile struct {
 
 	mu sync.Mutex
 
-	dpmu sync.Mutex
+	dpmu               sync.Mutex
 	downloadInProgress bool
 
-	pw *progressWriter
+	pw  *progressWriter
 	err error
 }
 
@@ -215,13 +217,13 @@ func (tf *tempFile) CheckInvariants() {
 	}
 
 	// Restore the seek position after using Stat below.
-	pos, err := tf.Seek(0, 1)
+	pos, err := tf.f.Seek(0, 1)
 	if err != nil {
 		panic(fmt.Sprintf("Seek: %v", err))
 	}
 
 	defer func() {
-		_, err := tf.Seek(pos, 0)
+		_, err := tf.f.Seek(pos, 0)
 		if err != nil {
 			panic(fmt.Sprintf("Seek: %v", err))
 		}
@@ -256,14 +258,6 @@ func (tf *tempFile) Destroy() {
 	tf.fro = nil
 }
 
-func (tf *tempFile) Read(p []byte) (int, error) {
-	return tf.fro.Read(p)
-}
-
-func (tf *tempFile) Seek(offset int64, whence int) (int64, error) {
-	return tf.f.Seek(offset, whence)
-}
-
 func (tf *tempFile) ReadAt(p []byte, offset int64) (int, error) {
 	for {
 		tf.dpmu.Lock()
@@ -275,7 +269,7 @@ func (tf *tempFile) ReadAt(p []byte, offset int64) (int, error) {
 			break
 		}
 		tf.dpmu.Unlock()
-		bl := offset+int64(len(p))
+		bl := offset + int64(len(p))
 		wr := tf.pw.written
 		if bl <= wr {
 			break
@@ -338,6 +332,43 @@ func (tf *tempFile) SyncLocal() error {
 
 func (tf *tempFile) GetFileRO() *os.File {
 	return tf.fro
+}
+
+type tempFileRO struct {
+	name string
+	f    *os.File
+	stat StatResult
+}
+
+func NewTempFileRO(name string) (*tempFileRO, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	finfo, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	mtime := finfo.ModTime()
+	stat := StatResult{Size: finfo.Size(), Mtime: &mtime}
+	return &tempFileRO{name: name, f: f, stat: stat}, nil
+}
+
+func (f *tempFileRO) GetFileRO() *os.File {
+	return f.f
+}
+
+func (f *tempFileRO) Stat() (sr StatResult, err error) {
+	return f.stat, nil
+}
+
+func (f *tempFileRO) Destroy() {
+	if f.f != nil {
+		f.f.Close()
+	}
+	os.Remove(f.name)
 }
 
 ////////////////////////////////////////////////////////////////////////

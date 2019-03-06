@@ -148,15 +148,15 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		return nil, err
 	}
 
-	tfs := gcsx.NewTempFileSate(cacheDir, bucket)
-	if err := tfs.CreateIfEmpty(); err != nil {
-		return nil, err
-	}
-
 	syncer := gcsx.NewSyncer(
 		cfg.AppendThreshold,
 		cfg.TmpObjectPrefix,
 		bucket)
+
+	tfs, err := gcsx.NewTempFileState(cacheDir, syncer)
+	if err != nil {
+		return nil, err
+	}
 
 	// Set up the basic struct.
 	fs := &fileSystem{
@@ -183,9 +183,7 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		tempFileState:          tfs,
 	}
 
-	if er := fs.tempFileState.UploadUnsynced(context.Background()); er != nil {
-		log.Println(er)
-	}
+	go fs.tempFileState.UploadUnsynced(context.Background())
 
 	fs.syncSc = util.NewSchedule(cfg.CacheSyncDelay, 0, nil, func(i interface{}) {
 		log.Println("fuse: start file sync", i)
@@ -410,7 +408,7 @@ type fileSystem struct {
 	nextHandleID fuseops.HandleID
 
 	syncSc        *util.Schedule
-	tempFileState *gcsx.TempFileSate
+	tempFileState *gcsx.TempFileState
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -953,7 +951,7 @@ func (fs *fileSystem) unlockAndDecrementLookupCount(
 	if fin, ok := in.(*inode.FileInode); ok {
 		fin.RUnlock()
 	} else {
-		panic(fmt.Errorf("file inode expected", in.ID(), in.Name()))
+		panic(fmt.Errorf("file inode expected %q, %q", in.ID(), in.Name()))
 	}
 }
 
@@ -991,7 +989,7 @@ func (fs *fileSystem) unlockAndMaybeDisposeOfInode(
 			fin.RUnlock()
 			return
 		} else {
-			panic(fmt.Errorf("file inode expected", in.ID(), in.Name()))
+			panic(fmt.Errorf("file inode expected %q %q", in.ID(), in.Name()))
 		}
 	}
 
