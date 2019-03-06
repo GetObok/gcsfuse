@@ -28,36 +28,39 @@ import (
 	"github.com/jacobsa/timeutil"
 )
 
-// A temporary file that keeps track of the lowest offset at which it has been
-// modified.
-//
-// Not safe for concurrent access.
-type TempFile interface {
-	// Panic if any internal invariants are violated.
-	CheckInvariants()
-
-	// Semantics matching os.File.
-	io.ReaderAt
-	io.WriterAt
-	Truncate(n int64) (err error)
+type TempFileRO interface {
+	GetFileRO() *os.File
 
 	// Return information about the current state of the content. May invalidate
 	// the seek position.
 	Stat() (sr StatResult, err error)
 
+	// Throw away the resources used by the temporary file. The object must not
+	// be used again.
+	Destroy()
+}
+
+// A temporary file that keeps track of the lowest offset at which it has been
+// modified.
+//
+// Not safe for concurrent access.
+type TempFile interface {
+	TempFileRO
+
+	// Panic if any internal invariants are violated.
+	CheckInvariants()
+
+	io.ReaderAt
+	io.WriterAt
+	Truncate(n int64) (err error)
+
 	// Explicitly set the mtime that will return in stat results. This will stick
 	// until another method that modifies the file is called.
 	SetMtime(mtime time.Time)
 
-	// Throw away the resources used by the temporary file. The object must not
-	// be used again.
-	Destroy()
-
 	SetDirtyThreshold(t int64)
 
 	SyncLocal() error
-
-	GetFileRO() *os.File
 }
 
 type StatResult struct {
@@ -329,6 +332,43 @@ func (tf *tempFile) SyncLocal() error {
 
 func (tf *tempFile) GetFileRO() *os.File {
 	return tf.fro
+}
+
+type tempFileRO struct {
+	name string
+	f    *os.File
+	stat StatResult
+}
+
+func NewTempFileRO(name string) (*tempFileRO, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	finfo, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	mtime := finfo.ModTime()
+	stat := StatResult{Size: finfo.Size(), Mtime: &mtime}
+	return &tempFileRO{name: name, f: f, stat: stat}, nil
+}
+
+func (f *tempFileRO) GetFileRO() *os.File {
+	return f.f
+}
+
+func (f *tempFileRO) Stat() (sr StatResult, err error) {
+	return f.stat, nil
+}
+
+func (f *tempFileRO) Destroy() {
+	if f.f != nil {
+		f.f.Close()
+	}
+	os.Remove(f.name)
 }
 
 ////////////////////////////////////////////////////////////////////////

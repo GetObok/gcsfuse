@@ -148,15 +148,15 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		return nil, err
 	}
 
-	tfs := gcsx.NewTempFileState(cacheDir, bucket)
-	if err := tfs.CreateIfEmpty(); err != nil {
-		return nil, err
-	}
-
 	syncer := gcsx.NewSyncer(
 		cfg.AppendThreshold,
 		cfg.TmpObjectPrefix,
 		bucket)
+
+	tfs := gcsx.NewTempFileState(cacheDir, syncer)
+	if err := tfs.CreateIfEmpty(); err != nil {
+		return nil, err
+	}
 
 	// Set up the basic struct.
 	fs := &fileSystem{

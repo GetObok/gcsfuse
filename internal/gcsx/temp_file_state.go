@@ -11,7 +11,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-	"time"
 )
 
 type tempFileStat struct {
@@ -24,13 +23,13 @@ type TempFileState struct {
 	mu        sync.Mutex
 	stateFile string
 
-	bucket gcs.Bucket
+	syncer Syncer
 }
 
-func NewTempFileState(cacheDir string, b gcs.Bucket) *TempFileState {
+func NewTempFileState(cacheDir string, syncer Syncer) *TempFileState {
 	return &TempFileState{
 		stateFile: path.Join(cacheDir, "status.json"),
-		bucket:    b,
+		syncer:    syncer,
 	}
 }
 
@@ -135,18 +134,21 @@ func (p *TempFileState) UploadUnsynced(ctx context.Context) error {
 
 	go func() {
 		for t, f := range st {
-			if !f.Synced {
-				log.Println("local cache file sync.", t, f.Name)
-				if err := p.uploadTmpFile(ctx, t, f); err != nil {
-					log.Println("local cache file sync failed.", t, f.Name, err)
-					continue
+			tfile, err := NewTempFileRO(t)
+			if err != nil && !os.IsNotExist(err) {
+				continue
+			} else if err == nil {
+				if !f.Synced {
+					log.Println("local cache file sync.", t, f.Name)
+					if err := p.uploadTmpFile(ctx, tfile, f); err != nil {
+						log.Println("local cache file sync failed.", t, f.Name, err)
+						continue
+					}
+					log.Println("local cache file sync done.", t, f.Name)
+				} else {
+					log.Println("local cache file already synced.", t, f.Name)
 				}
-				log.Println("local cache file sync done.", t, f.Name)
-			} else {
-				log.Println("local cache file already synced.", t, f.Name)
-			}
-			if err := os.Remove(t); err != nil {
-				log.Println("failed to remove local cache file.", t, f.Name)
+				tfile.Destroy()
 			}
 
 			p.mu.Lock()
@@ -186,28 +188,12 @@ func (p *TempFileState) CreateIfEmpty() error {
 	return nil
 }
 
-func (p *TempFileState) uploadTmpFile(ctx context.Context, tmpFile string, f tempFileStat) error {
-	tfile, err := os.Open(tmpFile)
-	defer tfile.Close()
-	if err != nil {
-		return err
+func (p *TempFileState) uploadTmpFile(ctx context.Context, tfile TempFileRO, f tempFileStat) error {
+	obj := gcs.Object{
+		Name:       f.Name,
+		Generation: f.Generation,
 	}
-	req := &gcs.CreateObjectRequest{
-		Name:                   f.Name,
-		GenerationPrecondition: &f.Generation,
-		Contents:               tfile,
-		Metadata: map[string]string{
-			"gcsfuse_mtime": time.Now().Format(time.RFC3339Nano),
-		},
-	}
-	_, err = p.bucket.CreateObject(ctx, req)
-	if err == nil {
-		return nil
-	}
-	if _, ok := err.(*gcs.NotFoundError); ok {
-		var gen int64 = 0
-		req.GenerationPrecondition = &gen
-		_, err = p.bucket.CreateObject(ctx, req)
-	}
+
+	_, err := p.syncer.SyncObject(ctx, &obj, tfile)
 	return err
 }
