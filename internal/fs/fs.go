@@ -153,8 +153,8 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		cfg.TmpObjectPrefix,
 		bucket)
 
-	tfs := gcsx.NewTempFileState(cacheDir, syncer)
-	if err := tfs.CreateIfEmpty(); err != nil {
+	tfs, err := gcsx.NewTempFileState(cacheDir, syncer)
+	if err != nil {
 		return nil, err
 	}
 
@@ -183,9 +183,7 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		tempFileState:          tfs,
 	}
 
-	if er := fs.tempFileState.UploadUnsynced(context.Background()); er != nil {
-		log.Println(er)
-	}
+	go fs.tempFileState.UploadUnsynced(context.Background())
 
 	fs.syncSc = util.NewSchedule(cfg.CacheSyncDelay, 0, nil, func(i interface{}) {
 		log.Println("fuse: start file sync", i)

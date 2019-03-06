@@ -1,6 +1,8 @@
 package gcsx
 
 import (
+	"fmt"
+
 	"github.com/jacobsa/gcloud/gcs"
 
 	"context"
@@ -13,6 +15,8 @@ import (
 	"sync"
 )
 
+const stateFileName = "status.json"
+
 type tempFileStat struct {
 	Name       string
 	Synced     bool
@@ -20,176 +24,144 @@ type tempFileStat struct {
 }
 
 type TempFileState struct {
-	mu        sync.Mutex
-	stateFile string
+	cacheDir string
+	syncer   Syncer
 
-	syncer Syncer
+	mu    sync.Mutex
+	state map[string]tempFileStat
+
+	// initially unsynced temp files
+	unsynced []string
 }
 
-func NewTempFileState(cacheDir string, syncer Syncer) *TempFileState {
-	return &TempFileState{
-		stateFile: path.Join(cacheDir, "status.json"),
-		syncer:    syncer,
+func NewTempFileState(cacheDir string, syncer Syncer) (*TempFileState, error) {
+	tfs := &TempFileState{
+		cacheDir: cacheDir,
+		syncer:   syncer,
+		state:    make(map[string]tempFileStat),
 	}
+
+	if err := tfs.restore(); err != nil {
+		return nil, fmt.Errorf("failed to restore %q: %v", tfs.stateFile(), err)
+	}
+	return tfs, nil
 }
 
-func (p *TempFileState) getStatusFile() (*os.File, map[string]tempFileStat, error) {
-	file, err := os.OpenFile(p.stateFile, os.O_CREATE|os.O_RDWR, 0700)
-	if err != nil {
-		return nil, nil, err
+func (p *TempFileState) stateFile() string {
+	return path.Join(p.cacheDir, stateFileName)
+}
+
+func (p *TempFileState) restore() error {
+	bytes, err := ioutil.ReadFile(p.stateFile())
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
 	}
 
-	bytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	tmpFileStats := map[string]tempFileStat{}
 	if len(bytes) > 0 {
-		if err := json.Unmarshal(bytes, &tmpFileStats); err != nil {
-			return nil, nil, err
+		if err := json.Unmarshal(bytes, &p.state); err != nil {
+			return err
+		}
+		for t := range p.state {
+			p.unsynced = append(p.unsynced, t)
 		}
 	}
-	return file, tmpFileStats, nil
-}
-
-func (p *TempFileState) writeStatusFile(file *os.File, st map[string]tempFileStat) error {
-	bytes, err := json.Marshal(st)
-	if err != nil {
-		return err
-	}
-
-	file.Truncate(0)
-	file.Seek(0, 0)
-
-	if _, err = file.Write(bytes); err != nil {
-		return err
-	}
-	file.WriteString("\n")
 	return nil
 }
 
 func (p *TempFileState) MarkForUpload(tmpFile, dstPath string, generation int64) error {
-	return p.update(func(m map[string]tempFileStat) {
-		m[tmpFile] = tempFileStat{
-			Name:       dstPath,
-			Generation: generation,
-		}
-	})
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.state[tmpFile] = tempFileStat{
+		Name:       dstPath,
+		Generation: generation,
+	}
+	return p.flush()
 }
 
 func (p *TempFileState) MarkUploaded(tmpFile string) error {
-	return p.update(func(m map[string]tempFileStat) {
-		s := m[tmpFile]
-		s.Synced = true
-		m[tmpFile] = s
-	})
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	s := p.state[tmpFile]
+	s.Synced = true
+	p.state[tmpFile] = s
+	return p.flush()
 }
 
 func (p *TempFileState) DeleteFileStatus(tmpFile string) error {
-	return p.update(func(m map[string]tempFileStat) {
-		delete(m, tmpFile)
-	})
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.state, tmpFile)
+	return p.flush()
 }
 
 func (p *TempFileState) UpdatePaths(oldPath, newPath string) error {
-	return p.update(func(m map[string]tempFileStat) {
-		for t, s := range m {
-			if strings.HasPrefix(s.Name, oldPath) {
-				p2 := strings.TrimPrefix(s.Name, oldPath)
-				newName := path.Join(newPath, p2)
-				if strings.HasSuffix(t, "/") {
-					newName = newName + "/"
-				}
-				s.Name = newName
-				m[t] = s
-			}
-		}
-	})
-}
-
-func (p *TempFileState) update(update func(m map[string]tempFileStat)) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-
-	file, st, err := p.getStatusFile()
-	if err != nil {
-		return err
+	for t, s := range p.state {
+		if strings.HasPrefix(s.Name, oldPath) {
+			p2 := strings.TrimPrefix(s.Name, oldPath)
+			newName := path.Join(newPath, p2)
+			if strings.HasSuffix(t, "/") {
+				newName = newName + "/"
+			}
+			s.Name = newName
+			p.state[t] = s
+		}
 	}
-	defer file.Close()
-	update(st)
-
-	return p.writeStatusFile(file, st)
+	return p.flush()
 }
 
-func (p *TempFileState) UploadUnsynced(ctx context.Context) error {
-	p.mu.Lock()
-	file, st, err := p.getStatusFile()
-	if err != nil {
+func (p *TempFileState) UploadUnsynced(ctx context.Context) {
+	var unsynced []string
+	for _, t := range p.unsynced {
+		p.mu.Lock()
+		f, stateExists := p.state[t]
 		p.mu.Unlock()
-		return err
-	}
-	p.mu.Unlock()
-	defer file.Close()
-
-	go func() {
-		for t, f := range st {
-			tfile, err := NewTempFileRO(t)
-			if err != nil && !os.IsNotExist(err) {
-				continue
-			} else if err == nil {
-				if !f.Synced {
-					log.Println("local cache file sync.", t, f.Name)
-					err := p.uploadTmpFile(ctx, tfile, f)
-					if err == nil {
-						log.Println("local cache file sync done.", t, f.Name)
-					} else {
-						log.Println("local cache file sync failed.", t, f.Name, err)
-						if _, ok := err.(*gcs.PreconditionError); !ok {
-							continue
-						}
-					}
+		tfile, err := NewTempFileRO(t)
+		if err != nil && !os.IsNotExist(err) {
+			log.Println("local cache file sync: failed to open temp file.", t, err)
+			unsynced = append(unsynced, t)
+			continue
+		} else if err == nil {
+			if stateExists && !f.Synced {
+				log.Println("local cache file sync.", t, f.Name)
+				err := p.uploadTmpFile(ctx, tfile, f)
+				if err == nil {
+					log.Println("local cache file sync done.", t, f.Name)
 				} else {
-					log.Println("local cache file already synced.", t, f.Name)
+					log.Println("local cache file sync failed.", t, f.Name, err)
+					if _, ok := err.(*gcs.PreconditionError); !ok {
+						unsynced = append(unsynced, t)
+						continue
+					}
 				}
-				tfile.Destroy()
+			} else {
+				log.Println("local cache file already synced.", t, f.Name)
 			}
-
-			p.mu.Lock()
-			file, st, err := p.getStatusFile()
-			if err != nil {
-				log.Println("failed to open cache state file.", t, f.Name)
-				p.mu.Unlock()
-				continue
-			}
-			delete(st, t)
-			if err = p.writeStatusFile(file, st); err != nil {
-				log.Println("failed to write cache state file.", t, f.Name)
-			}
-			file.Close()
-			p.mu.Unlock()
+			tfile.Destroy()
 		}
-	}()
-	return nil
+
+		p.DeleteFileStatus(t)
+	}
+	p.unsynced = unsynced
 }
 
-func (p *TempFileState) CreateIfEmpty() error {
-	csf, err := os.OpenFile(p.stateFile, os.O_CREATE|os.O_RDWR, 0700)
+func (p *TempFileState) txFile() string {
+	return path.Join(p.cacheDir, "."+stateFileName+".tx")
+}
+
+func (p *TempFileState) flush() error {
+	data, err := json.Marshal(p.state)
 	if err != nil {
 		return err
 	}
-	defer csf.Close()
-	size, err := csf.Seek(0, 2)
-	if err != nil {
+	if err := ioutil.WriteFile(p.txFile(), data, 0600); err != nil {
 		return err
 	}
-	if size == 0 {
-		_, err := csf.WriteString("{}\n")
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+
+	return os.Rename(p.txFile(), p.stateFile())
 }
 
 func (p *TempFileState) uploadTmpFile(ctx context.Context, tfile TempFileRO, f tempFileStat) error {
