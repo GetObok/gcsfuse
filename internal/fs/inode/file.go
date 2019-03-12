@@ -490,13 +490,13 @@ func (f *FileInode) Read(
 	if f.content != nil {
 		n, err = f.content.ReadAt(dst, offset)
 	} else {
+		f.rmu.Lock()
+		defer f.rmu.Unlock()
 		_, err = f.sourceReader.Seek(offset, io.SeekStart)
 		if err != nil {
 			return
 		}
-		f.rmu.Lock()
 		n, err = f.sourceReader.Read(dst)
-		f.rmu.Unlock()
 	}
 
 	switch {
