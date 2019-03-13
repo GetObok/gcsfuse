@@ -253,6 +253,7 @@ func (f *FileInode) ensureContent(ctx context.Context, readMode bool) (err error
 		err = fmt.Errorf("NewTempFile: %v", err)
 		return
 	}
+	log.Println("fuse: ensureContent: open temp file:", f.name, " -> ", tf.GetFileRO().Name())
 
 	// Update state.
 	f.content = tf
