@@ -217,7 +217,9 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 
 		} else {
 			log.Println("fuse: file sync done", in.Name(), i)
-			fs.tempFileState.MarkUploaded(in.GetTmpFileName())
+			if in.HasContent() {
+				fs.tempFileState.MarkUploaded(in.GetTmpFileName())
+			}
 		}
 	})
 
@@ -419,6 +421,10 @@ func (fs *fileSystem) scheduleSync(in inode.Inode) error {
 	file, ok := in.(*inode.FileInode)
 	if !ok {
 		return fmt.Errorf("expected ")
+	}
+
+	if !file.HasContent() {
+		return nil
 	}
 
 	fs.syncSc.Schedule(in.ID())
