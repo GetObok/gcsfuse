@@ -145,7 +145,7 @@ func (f *FileInode) Cleanup() {
 		return
 	}
 
-	if f.content != nil {
+	if f.HasContent() {
 		name := f.GetTmpFileName()
 		if er := f.tempFileState.DeleteFileStatus(name); er != nil {
 			log.Println("fuse: failed to delete cache status", name, er)
