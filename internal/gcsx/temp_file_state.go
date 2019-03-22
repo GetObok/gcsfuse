@@ -1,18 +1,17 @@
 package gcsx
 
 import (
-	"fmt"
-
-	"github.com/jacobsa/gcloud/gcs"
-
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"strings"
 	"sync"
+
+	"github.com/jacobsa/gcloud/gcs"
 )
 
 const stateFileName = "status.json"
@@ -113,7 +112,7 @@ func (p *TempFileState) UpdatePaths(oldPath, newPath string) error {
 	return p.flush()
 }
 
-func (p *TempFileState) UploadUnsynced(ctx context.Context) {
+func (p *TempFileState) UploadUnsynced(ctx context.Context) int {
 	var unsynced []string
 	for _, t := range p.unsynced {
 		p.mu.Lock()
@@ -146,6 +145,7 @@ func (p *TempFileState) UploadUnsynced(ctx context.Context) {
 		p.DeleteFileStatus(t)
 	}
 	p.unsynced = unsynced
+	return len(unsynced)
 }
 
 func (p *TempFileState) txFile() string {

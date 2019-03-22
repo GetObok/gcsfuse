@@ -183,7 +183,16 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		tempFileState:          tfs,
 	}
 
-	go fs.tempFileState.UploadUnsynced(context.Background())
+	go func() {
+		for {
+			n := fs.tempFileState.UploadUnsynced(context.Background())
+			if n == 0 {
+				return
+			}
+			log.Printf("local cache file sync: %d files remain unsynced", n)
+			time.Sleep(cfg.CacheSyncDelay)
+		}
+	}()
 
 	fs.syncSc = util.NewSchedule(cfg.CacheSyncDelay, 0, nil, func(i interface{}) {
 		log.Println("fuse: start file sync", i)
