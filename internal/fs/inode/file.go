@@ -76,7 +76,7 @@ type FileInode struct {
 	content gcsx.TempFile
 
 	rmu          sync.Mutex
-	sourceReader io.ReadSeeker
+	sourceReader gcs.ReadSeekCloser
 
 	// Has Destroy been called?
 	//
@@ -152,6 +152,11 @@ func (f *FileInode) Cleanup() {
 		}
 		f.content.Destroy()
 		f.content = nil
+	}
+
+	if f.sourceReader != nil {
+		f.sourceReader.Close()
+		f.sourceReader = nil
 	}
 
 	if f.sc != nil {
