@@ -90,6 +90,8 @@ type FileInode struct {
 	syncing          bool
 	syncReceived     bool
 	tempFileState    *gcsx.TempFileState
+
+	ensureContentMu sync.Mutex
 }
 
 var _ Inode = &FileInode{}
@@ -225,6 +227,8 @@ func (f *FileInode) clobbered(ctx context.Context) (b bool, err error) {
 //
 // LOCKS_REQUIRED(f.mu)
 func (f *FileInode) ensureContent(ctx context.Context, readMode bool) (err error) {
+	f.ensureContentMu.Lock()
+	defer f.ensureContentMu.Unlock()
 	f.cancelCleanupSchedule()
 	// Is there anything to do?
 	if f.content != nil || readMode && f.sourceReader != nil {
@@ -511,8 +515,6 @@ func (f *FileInode) Read(
 
 	case err != nil:
 		err = fmt.Errorf("content.ReadAt: %v", err)
-		f.cancelCleanupSchedule()
-		f.Cleanup()
 		return
 	}
 
