@@ -111,6 +111,9 @@ be interacting with the file system.
 
 		AppendThreshold: 1 << 21, // 2 MiB, a total guess.
 		TmpObjectPrefix: ".gcsfuse_tmp/",
+
+		KeepPageCache: flags.KeepPageCache,
+		UseDirectIO:   flags.UseDirectIO,
 	}
 
 	server, err := fs.NewServer(serverCfg)
