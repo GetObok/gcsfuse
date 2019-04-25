@@ -217,6 +217,10 @@ type flagStorage struct {
 	DebugGCS        bool
 	DebugHTTP       bool
 	DebugInvariants bool
+
+	// Kernel Caching
+	KeepPageCache bool
+	UseDirectIO   bool
 }
 
 // Add the flags accepted by run to the supplied flag set, returning the
@@ -249,6 +253,10 @@ func populateFlags(c *cli.Context) (flags *flagStorage) {
 		DebugGCS:        c.Bool("debug_gcs"),
 		DebugHTTP:       c.Bool("debug_http"),
 		DebugInvariants: c.Bool("debug_invariants"),
+
+		// Kernel Caching
+		KeepPageCache: c.Bool("keep_page_cache"),
+		UseDirectIO:   c.Bool("use_direct_io"),
 	}
 
 	// Handle the repeated "-o" flag.

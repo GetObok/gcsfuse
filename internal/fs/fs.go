@@ -119,6 +119,10 @@ type ServerConfig struct {
 	// periodically garbage collected.
 	AppendThreshold int64
 	TmpObjectPrefix string
+
+	// Kernel Caching
+	KeepPageCache bool
+	UseDirectIO   bool
 }
 
 // Create a fuse file system server according to the supplied configuration.
@@ -181,6 +185,8 @@ func NewServer(cfg *ServerConfig) (server fuse.Server, err error) {
 		implicitDirInodes:      make(map[string]inode.DirInode),
 		handles:                make(map[fuseops.HandleID]interface{}),
 		tempFileState:          tfs,
+		keepPageCache:          cfg.KeepPageCache,
+		useDirectIO:            cfg.UseDirectIO,
 	}
 
 	go func() {
@@ -420,6 +426,10 @@ type fileSystem struct {
 
 	syncSc        *util.Schedule
 	tempFileState *gcsx.TempFileState
+
+	// Kernel Caching
+	keepPageCache bool
+	useDirectIO   bool
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -1760,7 +1770,8 @@ func (fs *fileSystem) OpenFile(
 	// new inode IDs. So for a given inode, all modifications go through the
 	// kernel. Therefore it's safe to tell the kernel to keep the page cache from
 	// open to open for a given inode.
-	op.KeepPageCache = true
+	op.KeepPageCache = fs.keepPageCache
+	op.UseDirectIO = fs.useDirectIO
 
 	return
 }
