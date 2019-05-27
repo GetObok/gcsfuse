@@ -26,6 +26,11 @@ import (
 	"golang.org/x/net/context"
 )
 
+// For READDIR arguments, cookie values of 1 and 2 SHOULD NOT be used,
+// and for READDIR results, cookie values of 0, 1, and 2 MUST NOT be
+// returned. [https://tools.ietf.org/html/rfc7530][Page 271]
+const minOffset = 2
+
 // State required for reading from directories.
 type dirHandle struct {
 	/////////////////////////
@@ -195,7 +200,7 @@ func readAllEntries(
 
 	// Fix up offset fields.
 	for i := 0; i < len(entries); i++ {
-		entries[i].Offset = fuseops.DirOffset(i) + 1
+		entries[i].Offset = fuseops.DirOffset(i) + minOffset + 1
 	}
 
 	// Return a bogus inode ID for each entry, but not the root inode ID.
@@ -269,9 +274,14 @@ func (dh *dirHandle) ReadDir(
 		}
 	}
 
+	var offset fuseops.DirOffset
+	if op.Offset != 0 {
+		offset = op.Offset - minOffset
+	}
+
 	// Is the offset past the end of what we have buffered? If so, this must be
 	// an invalid seekdir according to posix.
-	index := int(op.Offset)
+	index := int(offset)
 	if index > len(dh.entries) {
 		err = fuse.EINVAL
 		return
